@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Mic, Square, Play, Pause } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import AudioPlayer from './AudioPlayer';
 
 
 const firebaseConfig = {
@@ -109,7 +110,8 @@ const AnxietyManagementApp = () => {
       const audioUrl = await uploadAudio(audioBlob);
 
       // Send the URL to your API
-      const res = await fetch('http://127.0.0.1:5005/ask_audio', {
+      const url = 'http://192.168.1.47:5005'
+      const res = await fetch(url+'/ask_audio', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -190,8 +192,11 @@ const AnxietyManagementApp = () => {
               <p><strong>Answer:</strong> {response.answer}</p>
               <p><strong>Emotion:</strong> {response.emotion}</p>
               <p><strong>counsel_chat:</strong> {response.counsel_chat}</p>
+              <p><strong>Voice:</strong></p>
+              <AudioPlayer filepath={`http://192.168.1.47:5005/${response.filepath}`} />
             </div>
           )}
+        
         </div>
       </div>
     </div>
