@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Play, Pause } from 'lucide-react';
+import { Mic, Square } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import AudioPlayer from './AudioPlayer';
-
 
 const firebaseConfig = {
   apiKey: "AIzaSyBvBbUgAWfII3EXoOAKpyIZTlzj748whPo",
@@ -18,14 +17,13 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const storage = getStorage(app);
 
-
 const AnxietyManagementApp = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [response, setResponse] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [transcribedText, setTranscribedText] = useState("");
 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -40,6 +38,26 @@ const AnxietyManagementApp = () => {
     };
   }, []);
 
+  const startListening = () => {
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.start();
+
+    recognition.onresult = (event) => {
+      const spokenText = event.results[0][0].transcript;
+      console.log("Recognized text:", spokenText);
+      setTranscribedText(spokenText);
+    };
+
+    recognition.onerror = (event) => {
+      console.error("Voice recognition error:", event.error);
+      setError("Error in voice recognition. Please try again.");
+    };
+  };
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -49,6 +67,7 @@ const AnxietyManagementApp = () => {
       mediaRecorderRef.current.start();
       setIsRecording(true);
       audioChunksRef.current = [];
+      startListening();  // Start voice recognition as recording begins
     } catch (err) {
       setError('Error accessing microphone. Please check your browser permissions.');
     }
@@ -73,14 +92,6 @@ const AnxietyManagementApp = () => {
     audioRef.current.src = URL.createObjectURL(audioBlob);
   };
 
-  const togglePlayPause = () => {
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play();
-    }
-    setIsPlaying(!isPlaying);
-  };
 
   const uploadAudio = async (blob) => {
     const fileName = `audio_${Date.now()}.wav`;
@@ -106,17 +117,14 @@ const AnxietyManagementApp = () => {
     setError(null);
 
     try {
-      // Upload the audio and get the URL
       const audioUrl = await uploadAudio(audioBlob);
-
-      // Send the URL to your API
-      const url = 'http://192.168.1.47:5005'
-      const res = await fetch(url+'/ask_audio', {
+      const url = 'http://192.168.1.47:5005';
+      const res = await fetch(`${url}/ask_audio`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ audio_url: audioUrl }),
+        body: JSON.stringify({ audio_url: audioUrl, transcribed_text: transcribedText}),
       });
 
       if (!res.ok) {
@@ -133,70 +141,118 @@ const AnxietyManagementApp = () => {
   };
 
   return (
-    <div className="container mx-auto p-4">
-      <div className="max-w-md mx-auto bg-white shadow-lg rounded-lg overflow-hidden">
-        <div className="px-4 py-5 sm:px-6">
-          <h1 className="text-2xl font-bold text-gray-900 text-center">Anxiety Management Assistant</h1>
-          <p className="mt-1 text-sm text-gray-500 text-center">Record your question to get advice</p>
-        </div>
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex justify-center space-x-4 mb-4">
-            {!isRecording ? (
-              <button
-                onClick={startRecording}
-                className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full flex items-center"
-              >
-                <Mic className="mr-2" /> Record
-              </button>
-            ) : (
-              <button
-                onClick={stopRecording}
-                className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-full flex items-center"
-              >
-                <Square className="mr-2" /> Stop
-              </button>
-            )}
-            {audioBlob && (
-              <button
-                onClick={togglePlayPause}
-                className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-full flex items-center"
-              >
-                {isPlaying ? <Pause className="mr-2" /> : <Play className="mr-2" />}
-                {isPlaying ? 'Pause' : 'Play'}
-              </button>
-            )}
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+          {/* Header Section */}
+          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-8 text-center">
+            <h1 className="text-3xl font-bold text-white mb-2">Anxiety Management Assistant</h1>
+            <p className="text-indigo-100">Share your thoughts and receive personalized guidance</p>
           </div>
-          <form onSubmit={handleSubmit}>
-            <button
-              type="submit"
-              disabled={isLoading || !audioBlob}
-              className={`mt-4 w-full bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md ${
-                isLoading || !audioBlob ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-700'
-              }`}
-            >
-              {isLoading ? 'Processing...' : 'Get Advice'}
-            </button>
-          </form>
+
+          {/* Recording Controls */}
+          <div className="px-6 py-8">
+            <div className="flex justify-center space-x-6 mb-8">
+              {!isRecording ? (
+                <button
+                  onClick={startRecording}
+                  className="bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-6 rounded-full flex items-center transform transition-transform duration-200 hover:scale-105 shadow-md"
+                >
+                  <Mic className="mr-2 h-5 w-5" /> Start Recording
+                </button>
+              ) : (
+                <button
+                  onClick={stopRecording}
+                  className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-6 rounded-full flex items-center transform transition-transform duration-200 hover:scale-105 shadow-md"
+                >
+                  <Square className="mr-2 h-5 w-5" /> Stop Recording
+                </button>
+              )}
+            </div>
+
+            {/* Transcribed Text Display */}
+            {transcribedText && (
+              <div className="mt-4 text-gray-900 bg-gray-100 p-4 rounded-md">
+                <p>Transcribed Text: {transcribedText}</p>
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <form onSubmit={handleSubmit} className="mt-6">
+              <button
+                type="submit"
+                disabled={isLoading || !audioBlob}
+                className={`w-full py-3 px-4 rounded-lg font-semibold text-white shadow-md transition-all duration-200
+                  ${isLoading || !audioBlob 
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 transform hover:scale-105'
+                  }`}
+              >
+                {isLoading ? 'Processing...' : 'Get Advice'}
+              </button>
+            </form>
+
+            {/* Error Display */}
+            {error && (
+              <div className="mt-6 bg-red-50 border-l-4 border-red-400 p-4 rounded-md">
+                <div className="flex">
+                  <div className="ml-3">
+                    <p className="text-sm text-red-700">{error}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Response Section */}
+            {response && (
+  <div className="mt-8 space-y-6 bg-gray-50 p-6 rounded-xl">
+    <h2 className="text-xl font-semibold text-gray-900 mb-4">Your Analysis</h2>
+    
+    <div className="space-y-4">
+      {/* Display Transcribed Question */}
+      <div className="bg-white p-4 rounded-lg shadow-sm">
+        <h3 className="text-sm font-medium text-gray-500">Your Question</h3>
+        <p className="mt-1 text-gray-900">{response.transcribed_question}</p>
+      </div>
+
+      {/* Display Most Relevant Question */}
+      <div className="bg-white p-4 rounded-lg shadow-sm">
+        <h3 className="text-sm font-medium text-gray-500">Similar Question</h3>
+        <p className="mt-1 text-gray-900">{response.most_relevant_question}</p>
+      </div>
+
+      {/* Display Answer */}
+      <div className="bg-white p-4 rounded-lg shadow-sm">
+        <h3 className="text-sm font-medium text-gray-500">Answer</h3>
+        <p className="mt-1 text-gray-900">{response.answer}</p>
+      </div>
+
+      {/* Display Emotional Context */}
+      <div className="bg-white p-4 rounded-lg shadow-sm">
+        <h3 className="text-sm font-medium text-gray-500">Emotional Context</h3>
+        <p className="mt-1 text-gray-900">{response.emotion}</p>
+      </div>
+
+      {/* Display Counseling Perspective */}
+      <div className="bg-white p-4 rounded-lg shadow-sm">
+        <h3 className="text-sm font-medium text-gray-500">Counseling Perspective</h3>
+        <p className="mt-1 text-gray-900">{response.counsel_chat}</p>
+      </div>
+
+      {/* Display Audio Response */}
+      {response.filepath && (
+        <div className="bg-white p-4 rounded-lg shadow-sm">
+          <h3 className="text-sm font-medium text-gray-500">Audio Response</h3>
+          <div className="mt-2">
+            <AudioPlayer filepath={`http://192.168.1.47:5005${response.filepath}`} />
+          </div>
         </div>
-        <div className="px-4 py-4 sm:px-6">
-          {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
-              <span className="block sm:inline">{error}</span>
-            </div>
-          )}
-          {response && (
-            <div className="mt-4">
-              <h2 className="text-lg font-semibold mb-2">Response:</h2>
-              <p className="mb-2"><strong>Your question:</strong> {response.transcribed_question}</p>
-              <p className="mb-2"><strong>Similar question:</strong> {response.most_relevant_question}</p>
-              <p><strong>Answer:</strong> {response.answer}</p>
-              <p><strong>Emotion:</strong> {response.emotion}</p>
-              <p><strong>counsel_chat:</strong> {response.counsel_chat}</p>
-              <p><strong>Voice:</strong></p>
-              <AudioPlayer filepath={`http://192.168.1.47:5005/${response.filepath}`} />
-            </div>
-          )}
-        
+      )}
+    </div>
+  </div>
+)}
+
+          </div>
         </div>
       </div>
     </div>
